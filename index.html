@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Upload and Convert</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .content {
+            width: 33vw;
+            margin: 0 auto;
+        }
+
+        #drop-area,
+        #error {
+            padding: 40px;
+            border-radius: 12px;
+            background-color: #ffffff;
+        }
+
+        #drop-area {
+            border: 2px dashed #007bff;
+            text-align: center;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transition: border-color 0.3s;
+        }
+
+        #drop-area.highlight {
+            border-color: #0056b3;
+        }
+
+        #drop-area p {
+            font-size: 18px;
+            margin: 0;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        button,
+        a {
+            background-color: #007bff;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            margin: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            text-decoration: none;
+            display: inline-block;
+            transition: background-color 0.3s, transform 0.3s;
+        }
+
+        button:hover,
+        a:hover {
+            background-color: #0056b3;
+            transform: translateY(-2px);
+        }
+
+        button:focus,
+        a:focus {
+            outline: none;
+        }
+
+        #error {
+            font-size: 16px;
+            text-align: center;
+            border: 2px dashed #d42c3c;
+            display: none;
+        }
+
+        #downloadButton {
+            text-decoration: none;
+            display: none;
+        }
+
+        /* Styles for smartphones */
+        @media only screen and (max-width: 600px) {
+            .content {
+                width: 100vw;
+            }
+        }
+
+        /* Styles for tablets */
+        @media only screen and (min-width: 601px) and (max-width: 1024px) {
+            .content {
+                width: 66vw;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>
+        Withings -> Trale
+    </h1>
+    <div class="content">
+        If you're using Withings to track your weight but want to switch to a free and open-source alternative, you can
+        switch to Trale.<br>
+        This tool converts your old weight data from the data export to a format Trale can import.
+        <ul>
+            <li>It's fully local, so no data is transmitted.</li>
+            <li>Download and open your exported archive.</li>
+            <li>Select the "weight.csv" and open it using this page.</li>
+            <li>Finally, download the new file and import it using the button in the Trale settings.</li>
+        </ul>
+        Visit Withings to get you data: <a href="https://account.withings.com/export/my_data">Export Data</a>
+        <div id="drop-area">
+            <p>Please activate JS.</p>
+        </div>
+        <input type="file" id="fileInput">
+        <div style="text-align: center;">
+            <button id="resetButton">Reset / Next File</button>
+            <a id="downloadButton" download="trale_import.txt">Download Processed File</a>
+        </div>
+        <div id="error" class="error hidden"></div>
+    </div>
+    <script>
+        // Reference to elements
+        const dropArea = document.getElementById('drop-area');
+        const fileInput = document.getElementById('fileInput');
+        const error = document.getElementById('error');
+        const resetButton = document.getElementById('resetButton');
+        const downloadButton = document.getElementById('downloadButton');
+
+        // Prevent default drag behaviors
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // Highlight drop area when file is dragged over it
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => dropArea.classList.add('highlight'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => dropArea.classList.remove('highlight'), false);
+        });
+
+        // Handle dropped files
+        dropArea.addEventListener('drop', handleDrop, false);
+
+        // Handle file selection
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        // Make the drop area clickable
+        dropArea.addEventListener('click', () => fileInput.click());
+
+        // Reset function
+        resetButton.addEventListener('click', reset, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+
+            handleFiles(files);
+        }
+
+        function handleFiles(files) {
+            [...files].forEach(uploadFile);
+        }
+
+        function uploadFile(file) {
+            hideError();
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                var rawFileContent = e.target.result.split("\n")
+                var lines = rawFileContent.slice(0, 6).join("\n");
+                lines = lines + "\n...";
+                dropArea.innerText = lines;
+                dropArea.style.textAlign = "left";
+                dropArea.style.textWrap = "nowrap";
+                dropArea.style.color = "rgb(117, 117, 117)";
+
+                rawFileContent.shift();
+                processFile(rawFileContent);
+            };
+            reader.readAsText(file);
+        }
+
+        function showError(message) {
+            error.textContent = message;
+            error.style.display = "block";
+        }
+
+        function hideError() {
+            error.style.display = "none";
+        }
+
+
+        function processFile(lines) {
+            const processedData = [];
+
+            // Header lines
+            processedData.push("# This file was created for trale using data exported from withings.");
+            processedData.push("# Date weight[kg]");
+
+            lines.forEach(line => {
+                try {
+                    // Trim the line to remove any leading/trailing whitespace
+                    const trimmedLine = line.trim();
+
+                    // Skip empty lines or lines without a comma
+                    if (trimmedLine === '') {
+                        return;
+                    }
+
+                    if (!trimmedLine.includes(',')) {
+                        throw new Error('This file is not a valid CSV file.');
+                    }
+
+                    // Split the line into parts
+                    const parts = trimmedLine.split(',');
+
+                    // Check if parts[0] is a valid date string and parts[1] is a number
+                    if (parts.length < 2 || isNaN(Date.parse(parts[0].slice(1, -1))) || isNaN(parseFloat(parts[1]))) {
+                        throw new Error('Invalid date / weight format');
+                    }
+
+                    const date = new Date(parts[0].slice(1, -1));
+                    const weight = parseFloat(parts[1]).toFixed(10);
+
+                    // Convert date to the desired format
+                    const formattedDate = date.toISOString();
+
+                    processedData.push(`${formattedDate} ${weight}`);
+                } catch (error) {
+                    console.error(`Error processing line: "${line}". Error: ${error.message}`);
+                    showError(`Error processing line: "${line}".\n Error: ${error.message}`)
+                }
+            });
+
+            // Reverse the order of the data lines, excluding the header lines
+            const headerLines = processedData.slice(0, 2);
+            const dataLines = processedData.slice(2).reverse();
+
+            // Combine the header and data lines
+            const finalData = headerLines.concat(dataLines);
+
+            // Create a downloadable link for the processed data
+            createDownloadLink(finalData);
+        }
+
+        function createDownloadLink(data) {
+            const blob = new Blob([data.join("\n")], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            downloadButton.href = url;
+            downloadButton.download = 'trale_import.txt';
+            downloadButton.style.display = "inline-block"; // Show download button
+        }
+
+        function reset() {
+            dropArea.innerText = null;
+            dropArea.innerHTML = '<p>Drag and drop a file here or click to select a Withings Weight CSV</p>';
+            dropArea.style.textAlign = "center";
+            dropArea.style.textWrap = "auto";
+            dropArea.style.color = "rgb(0, 0, 0)";
+            fileInput.value = ''; // Reset the file input
+            hideError();
+            downloadButton.style.display = "none"; // Hide download button
+        }
+        reset()
+    </script>
+</body>
+
+</html>
